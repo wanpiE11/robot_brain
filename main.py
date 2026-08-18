@@ -59,8 +59,8 @@ def main() -> None:
         executor_llm=llm,
         replanner_llm=llm,
         system_prompt=(
-            "You drive an exhibition hall robot. Use only the registered skills. "
-            "Do not invent actions outside the provided tools."
+            "你是一台展厅机器人。请只使用已注册的技能完成用户请求。"
+            "不要发明工具列表之外的任何动作。"
         ),
     )
 

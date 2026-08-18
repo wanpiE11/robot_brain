@@ -28,7 +28,7 @@ class RobotState:
 
 class NavigateToArgs(BaseModel):
     location_id: str = Field(
-        description="One of: display_area (展柜/展区), reception (接待台), door_main (大门)"
+        description="取值之一：display_area（展柜/展区）、reception（接待台）、door_main（大门）"
     )
 
 
@@ -41,10 +41,10 @@ class NavigateToTool(BaseTool):
 
     name: str = "navigate_to"
     description: str = (
-        "Navigate the wheeled base to a semantic location. "
-        "Valid locations: display_area (展柜/展区), reception (接待台), door_main (大门). "
-        "Preconditions: system.localization == healthy, path not blocked. "
-        "Success condition: robot arrived at location_id."
+        "将轮式底盘导航到语义位置。"
+        "合法位置：display_area（展柜/展区）、reception（接待台）、door_main（大门）。"
+        "前置条件：system.localization 正常、路径畅通。"
+        "成功条件：机器人已到达 location_id。"
     )
     args_schema: type[BaseModel] = NavigateToArgs
     known_locations: List[str] = Field(
@@ -61,7 +61,7 @@ class NavigateToTool(BaseTool):
 
 class PickArgs(BaseModel):
     object_id: str = Field(
-        description="One of: water_1 (瓶装水), water_2 (瓶装水), brochure_1 (宣传册)"
+        description="取值之一：water_1（瓶装水）、water_2（瓶装水）、brochure_1（宣传册）"
     )
 
 
@@ -74,11 +74,11 @@ class PickTool(BaseTool):
 
     name: str = "pick"
     description: str = (
-        "Pick up an object with the manipulator. "
-        "Valid objects: water_1 (瓶装水), water_2 (瓶装水), brochure_1 (宣传册). "
-        "Preconditions: robot base stopped, target object fresh and reachable. "
-        "Fails if the robot is already holding an object. "
-        "Success condition: robot.holding_object_id == object_id."
+        "用机械臂抓取物体。"
+        "合法物体：water_1（瓶装水）、water_2（瓶装水）、brochure_1（宣传册）。"
+        "前置条件：机器人底盘已停止、目标物体在位且可触及。"
+        "若机器人已持物则失败。"
+        "成功条件：robot.holding_object_id == object_id。"
     )
     args_schema: type[BaseModel] = PickArgs
     grabbable_objects: List[str] = Field(
@@ -98,7 +98,7 @@ class PickTool(BaseTool):
 
 
 class HandoverArgs(BaseModel):
-    person_id: str = Field(description="One of: person_1, person_2")
+    person_id: str = Field(description="取值之一：person_1、person_2")
 
 
 class HandoverTool(BaseTool):
@@ -110,11 +110,11 @@ class HandoverTool(BaseTool):
 
     name: str = "handover"
     description: str = (
-        "Hand over the held object to a person. "
-        "Valid persons: person_1, person_2. "
-        "Preconditions: robot holding an object and stopped at recipient. "
-        "Fails if the robot is not holding any object. "
-        "Success condition: object delivered to person_id, robot no longer holding it."
+        "把持有的物体交给某人。"
+        "合法对象：person_1、person_2。"
+        "前置条件：机器人持有物体且已停在接收者旁。"
+        "若机器人未持有任何物体则失败。"
+        "成功条件：物体已交付给 person_id，机器人不再持有。"
     )
     args_schema: type[BaseModel] = HandoverArgs
     known_persons: List[str] = Field(default_factory=lambda: ["person_1", "person_2"])
@@ -132,7 +132,7 @@ class HandoverTool(BaseTool):
 
 class OrientToArgs(BaseModel):
     person_or_entity_id: str = Field(
-        description="Person or entity id to orient the sensor head toward"
+        description="需要朝向的某人或某实体的 id"
     )
 
 
@@ -144,9 +144,9 @@ class OrientToTool(BaseTool):
 
     name: str = "orient_to"
     description: str = (
-        "Orient the robot toward a person or entity. "
-        "Preconditions: none, low risk. "
-        "Success condition: robot sensor head facing person_or_entity_id."
+        "让机器人朝向某人或某实体。"
+        "前置条件：无，低风险。"
+        "成功条件：机器人传感器朝向 person_or_entity_id。"
     )
     args_schema: type[BaseModel] = OrientToArgs
 

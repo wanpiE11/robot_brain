@@ -27,25 +27,24 @@ from rai.messages import HumanMultimodalMessage
 
 
 class Plan(BaseModel):
-    """A plan to help solve a user request."""
+    """用于帮助解决用户请求的计划。"""
 
     steps: List[str] = Field(
-        description="different steps to follow, should be in sorted order"
+        description="需要依次执行的步骤，应按顺序排列"
     )
 
 
 class Response(BaseModel):
-    """Response to user."""
+    """回复给用户的内容。"""
 
     response: str
 
 
 class Act(BaseModel):
-    """Action to take."""
+    """要执行的动作。"""
 
     action: Union[Response, Plan] = Field(
-        description="Action to perform. If you want to respond to user, use Response. "
-        "If you need to further use tools to get the answer, use Plan."
+        description="要执行的动作。如果想直接回复用户，请用 Response；如果还需要执行步骤，请用 Plan。"
     )
 
 
@@ -108,18 +107,18 @@ def create_plan_execute_agent(
     if system_prompt is None:
         system_prompt = ""
 
-    planner_prompt = """For the given objective, come up with a simple step by step plan.
+    planner_prompt = """针对给定的目标，制定一个简单、分步骤的计划。
 
-When creating your plan:
-- Design each step to leverage the most appropriate tool from the list above
-- Be specific about what information each step should gather or what action it should perform
-- Frame steps as clear instructions that can be executed using the available tools
-- Do NOT actually call or use any tools yourself - only create the plan
-- Each step should be actionable and tool-appropriate
+制定计划时请注意：
+- 让每一步尽量使用上面工具列表中合适的工具
+- 具体说明每一步要获取哪些信息或执行什么动作
+- 把步骤写成可以用现有工具执行的清晰指令
+- 不要自己实际调用或使用任何工具，只负责制定计划
+- 每一步都应当可执行、且与工具匹配
 
-This plan should involve individual tasks, that if executed correctly will yield the correct answer.
-Do not add any superfluous steps. The result of the final step should be the final answer.
-Make sure that each step has all the information needed - do not skip steps."""
+这个计划应当由一系列子任务组成，正确执行即可得到正确答案。
+不要添加多余的步骤。最后一步的结果就应当是最终答案。
+确保每一步都包含所需的信息，不要遗漏任何步骤。"""
 
     agent_executor = create_react_runnable(
         llm=executor_llm, system_prompt=system_prompt, tools=tools
@@ -136,7 +135,7 @@ Make sure that each step has all the information needed - do not skip steps."""
         if not plan:
             return {}
         task = plan[0]
-        task_formatted = f"""You are tasked with executing task: {task}."""
+        task_formatted = f"""你要执行的任务是：{task}。"""
 
         agent_response = agent_executor.invoke(
             {"messages": [HumanMultimodalMessage(content=task_formatted)]},
@@ -146,7 +145,7 @@ Make sure that each step has all the information needed - do not skip steps."""
         # each iteration. Upstream leaves plan untouched and relies entirely on
         # the replanner to prune done steps, which causes loops.
         return {
-            "plan": plan[1:],
+            # "plan": plan[1:],
             "past_steps": [(task, agent_response["messages"][-1].content)],
         }
 
@@ -172,21 +171,21 @@ Make sure that each step has all the information needed - do not skip steps."""
         # Format remaining plan
         plan_str = "\n".join([step for i, step in enumerate(state["plan"])])
 
-        replanner_prompt = f"""For the given objective, come up with a simple step by step plan.
-This plan should involve individual tasks, that if executed correctly will yield the correct answer.
-Do not add any superfluous steps. The result of the final step should be the final answer.
-Make sure that each step has all the information needed - do not skip steps.
+        replanner_prompt = f"""你不是规划器，不要从零制定计划。你负责复盘任务的执行进度，并决定下一步。
 
-Your objective was this:
+请检查已完成步骤与剩余计划：
+更新计划，只保留仍然需要执行的步骤，不需要返回回复（Response），已经完成的步骤不要再次出现，也不要添加多余步骤。
+
+原始目标如下：
 {state["original_task"]}
 
-Your current plan is:
+当前计划是：
 {plan_str}
 
-You have currently done the following steps:
+目前已完成的步骤：
 {past_steps_str}
 
-Update your plan accordingly if needed. If no more steps are needed and you can return to the user, then respond with that. Otherwise, fill out the plan. Only add steps to the plan that still NEED to be done. Do not return previously done steps as part of the plan."""
+请据此更新计划。若不需要更多步骤、可以直接回复用户，请直接回复。"""
 
         messages = [
             SystemMessage(content=system_prompt),
