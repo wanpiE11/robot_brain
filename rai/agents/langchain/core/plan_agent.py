@@ -135,7 +135,8 @@ def create_plan_execute_agent(
         if not plan:
             return {}
         task = plan[0]
-        task_formatted = f"""你要执行的任务是：{task}。"""
+        task_formatted = f"""你要执行的任务是：{task}。
+执行完成后，只用一句话客观汇报该步骤的执行结果，不要与用户寒暄、不要提及其他步骤。"""
 
         agent_response = agent_executor.invoke(
             {"messages": [HumanMultimodalMessage(content=task_formatted)]},
@@ -163,18 +164,20 @@ def create_plan_execute_agent(
         # Format past steps for the prompt
         past_steps_str = "\n".join(
             [
-                f"{step}: {result}"
+                f"第{i+1}步：{step} -> {result}"
                 for i, (step, result) in enumerate(state["past_steps"])
             ]
         )
 
         # Format remaining plan
-        plan_str = "\n".join([step for i, step in enumerate(state["plan"])])
+        plan_str = "\n".join(
+            [f"第{i+1}步：{step}" for i, step in enumerate(state["plan"])]
+        )
 
         replanner_prompt = f"""你不是规划器，不要从零制定计划。你负责复盘任务的执行进度，并决定下一步。
-
-请检查已完成步骤与剩余计划：
-更新计划，只保留仍然需要执行的步骤，不需要返回回复（Response），已经完成的步骤不要再次出现，也不要添加多余步骤。
+如果第一步顺利完成就输出除了第一步剩下的步骤，如果第一步失败就输出剩下的步骤和第一步的替代方案。
+只要当前计划中还有未完成的步骤，就必须返回新的计划（Plan），只保留仍然需要执行的步骤，绝不能返回回复（Response）。
+已经完成的步骤不要再次出现，也不要添加多余步骤。只有当当前计划中已没有待执行的步骤、任务确实全部完成时，才允许返回回复（Response）。
 
 原始目标如下：
 {state["original_task"]}
@@ -185,7 +188,7 @@ def create_plan_execute_agent(
 目前已完成的步骤：
 {past_steps_str}
 
-请据此更新计划。若不需要更多步骤、可以直接回复用户，请直接回复。"""
+请据此更新计划。"""
 
         messages = [
             SystemMessage(content=system_prompt),

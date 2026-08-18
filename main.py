@@ -44,10 +44,17 @@ def main() -> None:
     )
     from rai.initialization import get_llm_model
 
+    from model_trace import ModelTraceCallbackHandler, setup_logging
     from skills import make_skills
 
+    # Must run after the rai imports above (rai installs coloredlogs at import time).
+    setup_logging()
+
     llm = get_llm_model(
-        "complex_model", vendor="openai", config_path=str(HERE / "config.toml")
+        "complex_model",
+        vendor="openai",
+        config_path=str(HERE / "config.toml"),
+        callbacks=[ModelTraceCallbackHandler()],
     )
     model_name = getattr(llm, "model_name", None) or getattr(llm, "model", "?")
     base_url = getattr(llm, "openai_api_base", None) or getattr(llm, "base_url", "?")
