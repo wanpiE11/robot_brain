@@ -1,0 +1,21 @@
+[vendor]
+simple_model = "openai"
+complex_model = "openai"
+embeddings_model = "openai"
+
+[openai]
+simple_model = "qwen3.7-plus"
+complex_model = "qwen3.7-plus"
+embeddings_model = "text-embedding-ada-002"
+base_url = "https://llm-rjwzwzgyuh2m7sfv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+
+[tracing]
+project = "robot_brain"
+
+[tracing.langfuse]
+use_langfuse = false
+host = "http://localhost:3000"
+
+[tracing.langsmith]
+use_langsmith = false
+host = "https://api.smith.langchain.com"

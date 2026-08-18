@@ -1,0 +1,28 @@
+[project]
+name = "robot_brain"
+version = "0.1.0"
+description = "Exhibition hall robot brain"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    # LangChain / LangGraph orchestration (vendored rai_core imports these)
+    "langchain-core>=1.2.10,<2.0.0",
+    "langchain>=1.0.0,<2.0.0",
+    "langgraph>=1.1.5,<2.0.0",
+    "langgraph-prebuilt",
+    # LLM vendors used by rai.initialization.get_llm_model
+    "langchain-openai",
+    "langchain-ollama",
+    "langchain-aws",
+    "langsmith",
+    # rai.messages / config
+    "numpy<2.0",
+    "pillow",
+    "requests",
+    "coloredlogs",
+    "tomli",
+    "deprecated",
+    # rai.communication.hri_connector imports pydub at module scope
+    "pydub",
+    # langchain_ollama instantiates httpx.Client at import; needs socks on proxy networks
+    "httpx[socks]",
+]
