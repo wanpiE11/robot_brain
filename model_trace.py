@@ -125,7 +125,7 @@ def _classify(messages: list[BaseMessage]) -> str:
     blob = "\n".join(_content_to_text(m.content) for m in messages)
     if "针对给定的目标" in blob:
         return "planner"
-    if "当前计划是：" in blob:
+    if "当前计划按顺序的步骤依次为：" in blob:
         return "replanner"
     return "executor"
 

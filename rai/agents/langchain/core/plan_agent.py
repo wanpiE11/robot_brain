@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
@@ -27,16 +27,18 @@ from rai.messages import HumanMultimodalMessage
 
 
 class Plan(BaseModel):
-    """用于帮助解决用户请求的计划。"""
+    """还有步骤未执行时返回的剩余计划。"""
 
+    type: Literal["plan"]
     steps: List[str] = Field(
-        description="需要依次执行的步骤，应按顺序排列"
+        description="还需要依次执行的步骤，按原顺序排列；已完成的步骤绝不允许出现"
     )
 
 
 class Response(BaseModel):
-    """回复给用户的内容。"""
+    """所有步骤都完成后给用户的最终回复。"""
 
+    type: Literal["response"]
     response: str
 
 
@@ -44,7 +46,8 @@ class Act(BaseModel):
     """要执行的动作。"""
 
     action: Union[Response, Plan] = Field(
-        description="要执行的动作。如果想直接回复用户，请用 Response；如果还需要执行步骤，请用 Plan。"
+        discriminator="type",
+        description="要返回的动作：还有步骤要执行就返回 Plan（type=\"plan\"）；所有步骤都完成、需要向用户回复时才返回 Response（type=\"response\"）。",
     )
 
 
@@ -163,26 +166,27 @@ def create_plan_execute_agent(
         """Replan based on execution results."""
         # Format past steps for the prompt
         past_steps_str = "\n".join(
-            [
-                f"第{i+1}步：{step} -> {result}"
-                for i, (step, result) in enumerate(state["past_steps"])
-            ]
+            [f"{step} -> {result}" for step, result in state["past_steps"]]
         )
 
         # Format remaining plan
-        plan_str = "\n".join(
-            [f"第{i+1}步：{step}" for i, step in enumerate(state["plan"])]
-        )
+        plan_str = "\n".join(state["plan"])
 
-        replanner_prompt = f"""你不是规划器，不要从零制定计划。你负责复盘任务的执行进度，并决定下一步。
-如果第一步顺利完成就输出除了第一步剩下的步骤，如果第一步失败就输出剩下的步骤和第一步的替代方案。
-只要当前计划中还有未完成的步骤，就必须返回新的计划（Plan），只保留仍然需要执行的步骤，绝不能返回回复（Response）。
-已经完成的步骤不要再次出现，也不要添加多余步骤。只有当当前计划中已没有待执行的步骤、任务确实全部完成时，才允许返回回复（Response）。
+        replanner_prompt = f"""# Role
+你是一台展厅机器人的任务复盘模块（Replanner）。你的唯一职责是根据执行反馈更新任务队列。
+
+# Rules (CRITICAL)
+1. 只要当前计划中还有未执行的步骤，就必须返回 Plan 动作（type="plan"），把【仍然需要执行的步骤】填进 steps 字段。
+2. 只有原始目标的所有步骤都已真正完成、已无任何待执行步骤时，才允许返回 Response 动作（type="response"），向用户回复最终结果。
+3. 【绝对禁止】把"剩余计划/更新后的计划"这类文本写进 response 字段当作回复——剩余步骤的唯一载体是 steps 列表。
+4. 【绝对禁止】输出任何已完成的步骤；成功完成的步骤必须从新计划中彻底删除。
+5. 【只保留剩余】新计划仅包含"未开始"或"失败需重试"的步骤，保持它们在原计划中的顺序；steps 列表里只写步骤动作本身，不要带"第X步："之类的编号或序号前缀。
+6. 【失败处理】若上一步失败，保留该步骤并追加替代方案；若成功，永久移除该步骤。
 
 原始目标如下：
 {state["original_task"]}
 
-当前计划是：
+当前计划按顺序的步骤依次为：
 {plan_str}
 
 目前已完成的步骤：
