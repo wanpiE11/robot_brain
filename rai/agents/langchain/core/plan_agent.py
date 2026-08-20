@@ -14,7 +14,7 @@
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -24,6 +24,13 @@ from rai.agents.langchain.core import ReActAgentState
 from rai.agents.langchain.core.react_agent import create_react_runnable
 from rai.initialization import get_llm_model
 from rai.messages import HumanMultimodalMessage
+from runtime_state import (
+    StepRecord,
+    TaskRuntimeState,
+    WorldState,
+    build_executor_context,
+    build_replanner_context,
+)
 
 
 class Plan(BaseModel):
@@ -70,12 +77,42 @@ def should_end(state: PlanExecuteState) -> str:
         return "agent"
 
 
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+    return str(content)
+
+
+def _summarize_agent_response(agent_response: Dict[str, Any]) -> tuple[str, bool, str | None]:
+    messages = agent_response.get("messages", [])
+    result = _content_to_text(messages[-1].content) if messages else ""
+
+    errors = [
+        _content_to_text(message.content)
+        for message in messages
+        if isinstance(message, ToolMessage)
+        and getattr(message, "status", None) == "error"
+    ]
+    if not errors:
+        return result, True, None
+    return result, False, errors[-1]
+
+
 def create_plan_execute_agent(
     tools: List[BaseTool],
     planner_llm: Optional[BaseChatModel] = None,
     executor_llm: Optional[BaseChatModel] = None,
     replanner_llm: Optional[BaseChatModel] = None,
     system_prompt: Optional[str] = None,
+    world_state: WorldState | None = None,
 ) -> CompiledStateGraph:
     """Create a plan and execute agent that can break down complex tasks into steps.
 
@@ -87,6 +124,8 @@ def create_plan_execute_agent(
         Language model to use. If None, will use complex_model from config
     system_prompt : Optional[str | SystemMultimodalMessage], default=None
         System prompt to use (currently not used in this implementation)
+    world_state : Optional[WorldState], default=None
+        Shared deterministic robot world state updated by tool code.
 
     Returns
     -------
@@ -109,6 +148,8 @@ def create_plan_execute_agent(
         raise ValueError("Tools must be provided for plan and execute agent")
     if system_prompt is None:
         system_prompt = ""
+
+    runtime_state = TaskRuntimeState(world=world_state or WorldState())
 
     planner_prompt = """针对给定的目标，制定一个简单、分步骤的计划。
 
@@ -138,29 +179,43 @@ def create_plan_execute_agent(
         if not plan:
             return {}
         task = plan[0]
-        task_formatted = f"""你要执行的任务是：{task}。
-执行完成后，只用一句话客观汇报该步骤的执行结果，不要与用户寒暄、不要提及其他步骤。"""
+        task_formatted = build_executor_context(
+            original_task=state["original_task"],
+            current_step=task,
+            remaining_plan=plan[1:],
+            past_steps=runtime_state.past_steps,
+            world=runtime_state.world,
+        )
 
         agent_response = agent_executor.invoke(
             {"messages": [HumanMultimodalMessage(content=task_formatted)]},
             config={"recursion_limit": 50},
         )
+        result, success, error = _summarize_agent_response(agent_response)
+        stored_result = result
+        if error and error not in stored_result:
+            stored_result = f"{stored_result} (error: {error})"
+        runtime_state.past_steps.append(
+            StepRecord(step=task, result=stored_result, success=success, error=error)
+        )
         # Local fix vs upstream: consume the executed step so the plan shrinks
         # each iteration. Upstream leaves plan untouched and relies entirely on
         # the replanner to prune done steps, which causes loops.
         return {
-            # "plan": plan[1:],
-            "past_steps": [(task, agent_response["messages"][-1].content)],
+            "plan": plan[1:],
+            "past_steps": list(state["past_steps"]) + [(task, stored_result)],
         }
 
     def plan_step(state: PlanExecuteState):
         """Initial planning step."""
+        runtime_state.past_steps = []
+        runtime_state.plan_version = 1
         messages = [
             SystemMessage(content=system_prompt + "\n" + planner_prompt),
             HumanMultimodalMessage(content=state["original_task"]),
         ]
         plan = planner.invoke(messages)
-        return {"plan": plan.steps}
+        return {"plan": plan.steps, "past_steps": [], "response": ""}
 
     def replan_step(state: PlanExecuteState):
         """Replan based on execution results."""
@@ -194,6 +249,14 @@ def create_plan_execute_agent(
 
 请据此更新计划。"""
 
+        replanner_prompt = build_replanner_context(
+            original_task=state["original_task"],
+            current_plan=state["plan"],
+            past_steps=runtime_state.past_steps,
+            world=runtime_state.world,
+            plan_version=runtime_state.plan_version,
+        )
+
         messages = [
             SystemMessage(content=system_prompt),
             HumanMultimodalMessage(content=replanner_prompt),
@@ -203,6 +266,7 @@ def create_plan_execute_agent(
         if isinstance(output.action, Response):
             return {"response": output.action.response}
         else:
+            runtime_state.plan_version += 1
             return {"plan": output.action.steps}
 
     workflow = StateGraph(PlanExecuteState)

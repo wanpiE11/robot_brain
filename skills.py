@@ -14,16 +14,7 @@ from typing import List
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-
-class RobotState:
-    """Shared mutable mock robot state (single writer per skill, simplified).
-
-    Stands in for the WorldState/TaskState stores from the requirements doc.
-    """
-
-    def __init__(self) -> None:
-        self.location: str | None = None
-        self.holding: str | None = None
+from runtime_state import WorldState
 
 
 class NavigateToArgs(BaseModel):
@@ -50,7 +41,7 @@ class NavigateToTool(BaseTool):
     known_locations: List[str] = Field(
         default_factory=lambda: ["display_area", "reception", "door_main"]
     )
-    state: RobotState
+    state: WorldState
 
     def _run(self, location_id: str) -> str:
         if self.known_locations and location_id not in self.known_locations:
@@ -84,7 +75,7 @@ class PickTool(BaseTool):
     grabbable_objects: List[str] = Field(
         default_factory=lambda: ["water_1", "water_2", "brochure_1"]
     )
-    state: RobotState
+    state: WorldState
 
     def _run(self, object_id: str) -> str:
         if self.grabbable_objects and object_id not in self.grabbable_objects:
@@ -118,7 +109,7 @@ class HandoverTool(BaseTool):
     )
     args_schema: type[BaseModel] = HandoverArgs
     known_persons: List[str] = Field(default_factory=lambda: ["person_1", "person_2"])
-    state: RobotState
+    state: WorldState
 
     def _run(self, person_id: str) -> str:
         if self.known_persons and person_id not in self.known_persons:
@@ -149,16 +140,19 @@ class OrientToTool(BaseTool):
         "成功条件：机器人传感器朝向 person_or_entity_id。"
     )
     args_schema: type[BaseModel] = OrientToArgs
+    state: WorldState
 
     def _run(self, person_or_entity_id: str) -> str:
+        self.state.facing = person_or_entity_id
         return f"oriented toward {person_or_entity_id}"
 
 
-def make_skills() -> List[BaseTool]:
-    state = RobotState()
+def make_skills(state: WorldState | None = None) -> List[BaseTool]:
+    if state is None:
+        state = WorldState()
     return [
         NavigateToTool(state=state),
         PickTool(state=state),
         HandoverTool(state=state),
-        OrientToTool(),
+        OrientToTool(state=state),
     ]

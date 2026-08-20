@@ -45,6 +45,7 @@ def main() -> None:
     from rai.initialization import get_llm_model
 
     from model_trace import ModelTraceCallbackHandler, setup_logging
+    from runtime_state import WorldState
     from skills import make_skills
 
     # Must run after the rai imports above (rai installs coloredlogs at import time).
@@ -60,11 +61,13 @@ def main() -> None:
     base_url = getattr(llm, "openai_api_base", None) or getattr(llm, "base_url", "?")
     print(f"LLM: {llm.__class__.__name__} | base_url={base_url} | model={model_name}")
 
+    world_state = WorldState()
     agent = create_plan_execute_agent(
-        tools=make_skills(),
+        tools=make_skills(world_state),
         planner_llm=llm,
         executor_llm=llm,
         replanner_llm=llm,
+        world_state=world_state,
         system_prompt=(
             "你是一台展厅机器人。请只使用已注册的技能完成用户请求。"
             "不要发明工具列表之外的任何动作。"
