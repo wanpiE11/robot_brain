@@ -71,10 +71,35 @@ class PlanExecuteState(ReActAgentState):
 
 def should_end(state: PlanExecuteState) -> str:
     """Check if we should end or continue planning."""
-    if state["response"]:
+    if str(state["response"]).strip():
         return END
-    else:
-        return "agent"
+    if not state["plan"]:
+        return END
+    return "agent"
+
+
+def _normalize_steps(steps: List[str]) -> List[str]:
+    """Strip and drop empty replanned steps."""
+
+    return [step.strip() for step in steps if step and step.strip()]
+
+
+def _merge_replanner_output(output: Act, current_plan: List[str]) -> tuple[List[str] | None, str | None]:
+    """Convert replanner output into a safe state update.
+
+    Empty plan outputs are treated as invalid unless the current plan is already empty.
+    """
+
+    if isinstance(output.action, Response):
+        response = output.action.response.strip()
+        if response:
+            return None, response
+        return list(current_plan), None
+
+    updated_plan = _normalize_steps(output.action.steps)
+    if updated_plan:
+        return updated_plan, None
+    return list(current_plan), None
 
 
 def _content_to_text(content: Any) -> str:
@@ -263,11 +288,12 @@ def create_plan_execute_agent(
         ]
         output = replanner.invoke(messages)
 
-        if isinstance(output.action, Response):
-            return {"response": output.action.response}
-        else:
+        updated_plan, response = _merge_replanner_output(output, state["plan"])
+        if response is not None:
+            return {"response": response}
+        if updated_plan != state["plan"]:
             runtime_state.plan_version += 1
-            return {"plan": output.action.steps}
+        return {"plan": updated_plan}
 
     workflow = StateGraph(PlanExecuteState)
 
