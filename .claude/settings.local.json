@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"D:\\\\Code_Python\\\\robot_brain\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import pytest; print\\('pytest', pytest.__version__\\)\")",
+      "Bash(command -v uv)",
+      "Bash(uv --version)",
+      "Bash(uv run *)",
+      "Bash(git *)",
+      "Bash(gh repo *)",
+      "Bash(curl -s https://api.github.com/repos/wanpiE11/robot_brain)",
+      "Bash(curl -s https://api.github.com/repos/wanpiE11/robot_brain/branches)"
+    ]
+  }
+}

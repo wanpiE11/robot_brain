@@ -35,9 +35,9 @@ class TaskRuntimeState:
 def format_world_state(world: WorldState) -> str:
     return "\n".join(
         [
-            f"- location: {world.location or 'unknown'}",
-            f"- holding: {world.holding or 'none'}",
-            f"- facing: {world.facing or 'unknown'}",
+            f"- 位置: {world.location or '未知'}",
+            f"- 持有物: {world.holding or '无'}",
+            f"- 朝向: {world.facing or '未知'}",
         ]
     )
 
@@ -47,10 +47,10 @@ def format_step_records(past_steps: Sequence[StepRecord]) -> str:
         return "- none"
     lines: list[str] = []
     for index, record in enumerate(past_steps, start=1):
-        status = "success" if record.success else "failed"
+        status = "成功" if record.success else "失败"
         lines.append(f"{index}. [{status}] {record.step} -> {record.result}")
         if record.error:
-            lines.append(f"   error: {record.error}")
+            lines.append(f"   错误: {record.error}")
     return "\n".join(lines)
 
 
@@ -64,29 +64,26 @@ def build_state_hint(world: WorldState, current_step: str) -> str:
     """Return deterministic guidance derived from current state."""
 
     hints = [
-        "Use the current world state as fact. Do not invent or rewrite it.",
-        "Only the registered tools can change world state.",
+        "请把当前世界状态当作事实，不要自行编造或改写。",
+        "只有已注册的工具可以改变世界状态。",
     ]
 
     step_lower = current_step.lower()
     if world.holding:
         hints.append(
-            f"The robot is already holding {world.holding}; do not call pick again "
-            "unless the current step explicitly requires replacing that object."
+            f"机器人当前已经持有 {world.holding}；除非当前步骤明确要求更换物体，否则不要再次调用 pick。"
         )
     else:
-        hints.append("The robot is not holding an object; handover will fail until pick succeeds.")
+        hints.append("机器人当前没有持有物体；在 pick 成功之前，handover 一定会失败。")
 
     if "递" in current_step or "交" in current_step or "handover" in step_lower:
         if world.holding:
             hints.append(
-                "For this delivery/handover step, call handover with the target person. "
-                "Do not call pick first because the object is already held."
+                "对于当前递交步骤，请直接调用 handover，并传入目标人物。不要先调用 pick，因为物体已经在手中。"
             )
         else:
             hints.append(
-                "For this delivery/handover step, first recover the missing held object "
-                "before calling handover."
+                "对于当前递交步骤，请先补回缺失的持有物体，再调用 handover。"
             )
 
     return "\n".join(f"- {hint}" for hint in hints)
@@ -102,31 +99,31 @@ def build_executor_context(
 ) -> str:
     """Build the per-step prompt for the ReAct executor."""
 
-    return f"""You are executing one step of a robot plan.
+    return f"""你正在执行机器人计划中的一个步骤。
 
-Original user task:
+原始任务：
 {original_task}
 
-Current step to execute now:
+当前要执行的步骤：
 {current_step}
 
-Remaining effective plan after this step:
+执行完当前步骤后的剩余计划：
 {format_plan_steps(remaining_plan)}
 
-Completed step records:
+已完成步骤记录：
 {format_step_records(past_steps)}
 
-Current world state:
+当前世界状态：
 {format_world_state(world)}
 
-State guidance:
+状态提示：
 {build_state_hint(world, current_step)}
 
-Execution rules:
-- Execute only the current step.
-- Choose the minimal registered tool call(s) needed for this step.
-- After executing, report this step's objective result in one concise sentence.
-- Do not chat with the user and do not mention unrelated future steps."""
+执行规则：
+- 只执行当前步骤。
+- 只调用完成当前步骤所必需的最少注册工具。
+- 执行后，只用一句话客观汇报当前步骤的结果。
+- 不要与用户寒暄，不要提及无关的后续步骤。"""
 
 
 def build_replanner_context(
@@ -139,27 +136,27 @@ def build_replanner_context(
 ) -> str:
     """Build the prompt for the replanner."""
 
-    return f"""# Role
-You are the replanner for an exhibition robot task. You update only the remaining plan.
+    return f"""# 角色
+你是展厅机器人的复盘模块，只负责更新剩余计划。
 
-# Rules
-1. If any steps still need execution, return a Plan action with only those remaining steps.
-2. Return a Response action only when the original task is actually complete.
-3. Never put remaining-plan text into the response field.
-4. Never include successfully completed steps in the new plan.
-5. If the last step failed, keep or repair that step so it can be retried.
-6. Treat the world state below as factual. You may read it, but you cannot modify it directly.
+# 规则
+1. 只要当前计划里还有未执行步骤，就必须返回 Plan 动作，只保留仍需执行的步骤。
+2. 只有原始任务已经真正完成、且没有待执行步骤时，才允许返回 Response 动作。
+3. 不要把“剩余计划 / 更新后的计划”之类的文本写进 response 字段。
+4. 不要把已经成功完成的步骤放进新计划。
+5. 如果上一步失败，就保留或修复该步骤，方便重试。
+6. 当前世界状态是事实。你可以读取它，但不能直接修改它。
 
-Original user task:
+原始任务：
 {original_task}
 
-Current effective plan, version {plan_version}:
+当前有效计划（版本 {plan_version}）：
 {format_plan_steps(current_plan)}
 
-Completed step records:
+已完成步骤记录：
 {format_step_records(past_steps)}
 
-Current world state:
+当前世界状态：
 {format_world_state(world)}
 
-Replan now using only the remaining required steps."""
+请仅根据剩余需要执行的步骤重新生成计划。"""
